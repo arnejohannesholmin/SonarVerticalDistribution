@@ -1,31 +1,29 @@
 
-library(stringi)
-library(RstoxData)
-
-
 #### Functions: ####
 # Function for reading sonar per ping output data:
 readAllProfosPP <- function(x, ...) {
-	if(isTRUE(file.info(x)$isdir)) {
+    if(isTRUE(file.info(x)$isdir)) {
 		x <- list.files(x, full.names=TRUE)
 	}
 	
 	# Read the files and rbind:
 	#data <- lapply(x, read.table, sep="", header=TRUE)
 	data <- lapply(x, data.table::fread, ...)
-	do.call(rbind, data)
+	data <- data.table::rbindlist(data)
+	
+	return(data)
 }
 
-# Function for selecting only schools within a mean Sv interval (volume backscattering strength in dB):
-subsetSchools <- function(x, lower = -70, upper = -20) {
-	subset(x, Sv.mean > lower & Sv.mean < upper)
-}
+### # Function for selecting only schools within a mean Sv interval (volume ### backscattering strength in dB):
+### subsetSchools <- function(x, lower = -70, upper = -20) {
+### 	subset(x, Sv.mean > lower & Sv.mean < upper)
+### }
 
-# Function to exclude schools:
-excludeSchools <- function(x, schoolID, IDcol="Id") {
-	exclude <- x[[IDcol]] %in% schoolID
-	x[!exclude, ]
-} 
+### # Function to exclude schools:
+### excludeSchools <- function(x, schoolID, IDcol="Id") {
+### 	exclude <- x[[IDcol]] %in% schoolID
+### 	x[!exclude, ]
+### } 
 
 # Function to add volume backsattering coefficient (linear values):
 addVolumeBackscatteringCoefficient <- function(x) {
@@ -82,66 +80,7 @@ orderSchoolsByTime <- function(x) {
 	x[order(x$DateTime), ]
 }
 
-# Function to read list user file 11 (LUF11):
-readLUF11 <- function(x, headChunk = 20) {
-	readLUF11_one <- function(x, headChunk = 20) {
-		l <- readLines(x, headChunk)
-		skip <- sum(startsWith(l,"%"))
-		read.table(x, header = TRUE, sep = "", skip = skip)
-	}
 	
-	if(isTRUE(file.info(x)$isdir)) {
-		x <- list.files(x, full.names=TRUE)
-	}
-	# Read the files and rbind:
-	data <- lapply(x, readLUF11_one, headChunk = headChunk)
-	do.call(rbind, data)
-}	
-
-# Function to get vertical extent of the sonar sampling volume:
-#getSonarHeight <- function(tilt = 5, maxRange = 600, minRange = 30, transducerDepth = 6.6, beamWidth = 6) {
-#	upperBeamAngleRadians <- pi / 180 * (tilt - beamWidth / 2)
-#	lowerBeamAngleRadians <- pi / 180 * (tilt + beamWidth / 2)
-#	midBeamAngleRadians <- pi / 180 * tilt
-#	upper <- transducerDepth + minRange * sin(upperBeamAngleRadians)
-#	lower <- transducerDepth + maxRange * sin(lowerBeamAngleRadians)
-#	lowerMid <- transducerDepth + maxRange * sin(midBeamAngleRadians)
-#	height <- lower - upper
-#	list(
-#		upper = upper, 
-#		lower = lower, 
-#		height = height, 
-#		lowerMid = lowerMid
-#	)
-#}
-
-sonarChannelName <- function(channelID = 1) {
-	paste0("Sonar_", echosounderChannelName(channelID))
-}
-MS70ChannelName <- function(channelID = 1, channelThickness = 5) {
-	paste0("sV_Ch", channelID, "_", (channelID - 1) * channelThickness, ".", channelID * channelThickness, "m")
-}
-
-
-
-
-
-
-
-setPOSIXlt <- function(x, att.from) {
-	attributes(x) <- attributes(att.from)
-	#unlist(as.POSIXlt(x))
-	x
-}
-
-seqIfValid <- function(x, y) {
-	if(y >= x) {
-		seq(x, y, 1)
-	} 
-	else {
-		NULL
-	}
-}
 
 
 mean0 <- function(x) {
@@ -150,209 +89,41 @@ mean0 <- function(x) {
 
 
 
-
-# Function to convert the sonarData to a table with all channels as columns, and write to NMDEchosounder xml file:
-writeSonarLUF20_old <- function(
-	sonarData, 
-	LUF20File, 
+#' Convert PROFOS ppe-files to NMDEchosounder or ICESAcoustic files
+#' 
+#' @param ppeFiles A vector of the PROFOS ppe files, or the path to the directory holding the files.
+#' @param acousticFile The path to the acoustic file to write the vertical distribution from the sonar data to.
+#' 
+#' @import data.table
+#' 
+#' @export
+#' 
+profosPPE2LUF20 <- function(
+	ppeFiles, 
+	acousticFile, 
+	
 	cruise = "FisherySonar", 
 	platform = NA, 
 	acocat = 12, 
 	freq = 38000, 
 	transceiver = 1, 
-	logDuration = 36, 
+	logDistance = 0.1, 
 	channelThickness = 10, 
 	#maxRange = 600, 
 	minRange = 10, 
 	transducerDepth = 7, 
-	beamWidth = 6, 
 	depth = "Center.dep", 
 	upperChannelDepth = 0, 
 	propellerAngleDegrees = 45, 
-	channelType = "P", 
-	xsd = "1", 
-	cores = 1
-) {
-	
-	# Get the upper, mid and lower point of the sonar sampling volume:
-	numChannels <- ceiling(max(sonarData[[depth]], na.rm = TRUE) / channelThickness)
-	channelIDs <- seq_len(numChannels)
-	
-	# Get the sonar NASC per channel:
-	NASCPerPing <- lapply(channelIDs, getSonarNASCPerPing_oneChannel, sonarData = sonarData, transducerDepth = transducerDepth, depth = depth, propellerAngleDegrees = propellerAngleDegrees, channelThickness = channelThickness)
-	NASCPerPing <- RstoxData::mergeByIntersect(NASCPerPing, all = TRUE)
-	
-	# Merge in the positions:
-	NASCPerPing <- RstoxData::mergeByIntersect(NASCPerPing, sonarData[, c("DateTime", "Ship.lon", "Ship.lat", "Ship.speed", "Ship.heading", "Trans.tilt")])
-	
-	# Create a time sequence to interpolate positions to and to average the NASCs and the speed in:
-	DateTimeSeq <- seq(min(NASCPerPing$DateTime), max(NASCPerPing$DateTime) + logDuration, by = logDuration)
-	# Set the last time of the DateTimeSeq equal to the actual last time:
-	DateTimeSeq[length(DateTimeSeq)] <- max(NASCPerPing$DateTime)
-	
-	# Find first the time intervals of the sonar times:
-	timeInterval <- findInterval(NASCPerPing$DateTime, DateTimeSeq)
-	
-	# Find sequences of unassigned time intervals, and set first time of these sequences to the last time of the DateTimes in the previous interval, and opositely for the last time of each sequence:
-	# Locate sequences of unassigned time intervals:
-	unassigned <- which(diff(timeInterval) > 1)
-	endInterval <- timeInterval[unassigned]
-	startInterval <- timeInterval[unassigned + 1]
-	
-	# Get the end times of each interval which is followed by an empty interval:
-	endTime <- unlist(by(
-		NASCPerPing$DateTime[timeInterval %in% endInterval], 
-		timeInterval[timeInterval %in% endInterval], 
-		tail, 
-		1
-	))
-	# Convert to a vector of POSIX:
-	endTime <- setPOSIXlt(endTime, NASCPerPing$DateTime)
-	
-	startTime <- unlist(by(
-		NASCPerPing$DateTime[timeInterval %in% startInterval], 
-		timeInterval[timeInterval %in% startInterval], 
-		head, 
-		1
-	))
-	# Convert to a vector of POSIX:
-	startTime <- setPOSIXlt(startTime, NASCPerPing$DateTime)
-	
-	# Set the times of the endIntervals to the last time in the corresponding pings associatted to the interval. Add one microsecond to the endTime:
-	endTime <- endTime + 1e-6
-	startTime <- startTime
-	DateTimeSeq[endInterval + 1] <- endTime
-	DateTimeSeq[startInterval] <- startTime
-	
-	# Discard the unassigned intervals:
-	browser()
-	toRemove <- unlist(mapply(seqIfValid, endInterval + 2, startInterval - 1))
-	DateTimeSeq <- DateTimeSeq[-toRemove]
-	
-	# Now we have the time intervals to average the NASC and speed and to get the start and end times and positions in:
-	intervalsData <- data.table::data.table(
-		DateTime = DateTimeSeq
-	)
-	# Interpolate the positions onto the time intervals:
-	intervalsData[, Longitude := approx(NASCPerPing$DateTime, NASCPerPing$Ship.lon, DateTime)$y]
-	intervalsData[, Latitude := approx(NASCPerPing$DateTime, NASCPerPing$Ship.lat, DateTime)$y]
-	
-	
-	# Get start and stop position and time
-	LUF20Data <- data.table::data.table(
-		intervalsData[-nrow(intervalsData), ], 
-		intervalsData[-1, ]
-	)
-	data.table::setnames(LUF20Data, paste0(rep(c("Start", "Stop"), each = 3), names(LUF20Data)))
-	LUF20Data[, timeInterval := seq_len(nrow(.SD))]
-	
-	# Add the NASC of each channel:
-	NASCPerPing[, timeInterval := findInterval(DateTime, DateTimeSeq, rightmost.closed = TRUE)]
-	# Average NASC and vessel speed in each interval:
-	NASCCols <- names(NASCPerPing)[startsWith(names(NASCPerPing), "sa..ch")]
-	num_pel_ch <- length(NASCCols)
-	toAverage <- c(
-		"Ship.speed", 
-		NASCCols
-	)
-	averageSpeedAndNASC <- NASCPerPing[, lapply(.SD, mean0), by = "timeInterval", .SDcols = toAverage]
-	
-	# Insert NAs for 0, as per the LUF20 convension:
-	for (j in NASCCols) {
-		data.table::set(averageSpeedAndNASC, which(averageSpeedAndNASC[[j]] == 0), j, NA)
-	}
-		
-	# Add the average sa and speed to the LUF20Data:
-	LUF20Data <- merge(LUF20Data, averageSpeedAndNASC, by = "timeInterval")
-	
-	
-	# Invent log_start as starting from 0. Here speed is in m/s, so we need to convert to knots:
-	LUF20Data[, log_start := cumsum(as.numeric(StopDateTime - StartDateTime, units = "hours") * Ship.speed * 3600 / 1852)]
-	
-	
-	integrator_dist <- diff(LUF20Data$log_start)
-	integrator_dist <- c(integrator_dist, utils::tail(integrator_dist, 1))
-	
-	# Add other data:
-	LUF20Data[, report_time := format(Sys.time(), tz = "UTC")]
-	LUF20Data[, cruise := ..cruise]
-	LUF20Data[, platform := ..platform]
-	LUF20Data[, integrator_dist := ..integrator_dist]
-	LUF20Data[, pel_ch_thickness := ..channelThickness]
-	LUF20Data[, num_pel_ch := ..num_pel_ch]
-	LUF20Data[, upper_interpret_depth := ..upperChannelDepth]
-	LUF20Data[, upper_integrator_depth := ..upperChannelDepth]
-	LUF20Data[, acocat := ..acocat]
-	LUF20Data[, freq := ..freq]
-	LUF20Data[, type := ..channelType]
-	LUF20Data[, transceiver := ..transceiver]
-	
-	
-	# Rename variables to the LUF2o names:
-	oldNames <- c(
-		"StartDateTime", 
-		"StopDateTime",
-		"StartLongitude",
-		"StartLatitude",
-		"StopLongitude",
-		"StopLatitude"
-	)
-	LUF20Names <- c(
-		"start_time", 
-		"stop_time",
-		"lon_start",
-		"lat_start",
-		"lon_stop",
-		"lat_stop"
-	)
-	data.table::setnames(LUF20Data, oldNames, LUF20Names)
-	
-	# Convert to milliseconds strings:
-	LUF20Data[, start_time := format(start_time, format = "%Y-%m-%d %H:%M:%OS3")]
-	LUF20Data[, stop_time := format(stop_time, format = "%Y-%m-%d %H:%M:%OS3")]
-	
-	# Write the file:
-	LUF20File <- Rstox::writeAcousticXML(as.data.frame(LUF20Data), LUF20File, xsd = xsd, cores = cores)
-	
-	return(LUF20Data)
-}
-
-
-
-
-
-
-
-
-
-profosPP2LUF20 <- function(
-	profosDir, 
-	LUF20File = file.path(profosDir, "SonarLUF20.xml"), 
-	cruise = "FisherySonar", 
-	platform = NA, 
-	acocat = 12, 
-	freq = 38000, 
-	transceiver = 1, 
-	logDuration = 36, 
-	channelThickness = 10, 
-	#maxRange = 600, 
-	minRange = 10, 
-	transducerDepth = 7, 
-	beamWidth = 6, 
-	depth = "Center.dep", 
-	upperChannelDepth = 0, 
-	propellerAngleDegrees = 45, 
-	channelType = "P", 
-	xsd = "1", 
-	cores = 1, 
 	checkNAs = TRUE, 
 	schoolThreshold = c(-70, -20), 
 	ow = FALSE
 ) {
 	
 	
-	#sonarData <- readAllProfosPP(profosDir)
-	sonarData <- readAllProfosPP(profosDir, na.strings = "N/A")
+    #sonarData <- readAllProfosPP(ppeFiles)
+	sonarData <- readAllProfosPP(ppeFiles, na.strings = "N/A")
+	browser()
 
 	# This was wrong, as we need all pings:
 	#sonarData <- sonarData[complete.cases(sonarData), ]
@@ -377,40 +148,29 @@ profosPP2LUF20 <- function(
 	# Order the schools by time, since this is not a requirement in the PROFOS output files:
 	sonarData <- orderSchoolsByTime(sonarData)
 
-	# Write the LUF20:
-	if(!ow && file.exists(LUF20File)) {
-		stop("The LUF20File exists: ", LUF20File, ". Choose a different file path.")
-	}
+	## Write the LUF20:
+	#if(!ow && file.exists(acousticFile)) {
+	#	stop("The acousticFile exists: ", acousticFile, ". Choose a different file path.")
+	#}
 	writeSonarLUF20(
 		sonarData = sonarData, 
-		LUF20File = LUF20File, 
+		acousticFile = acousticFile, 
 		cruise = cruise, 
 		platform = platform, 
 		acocat = acocat, 
 		freq = freq, 
 		transceiver = transceiver, 
-		logDuration = logDuration, 
+		logDistance = logDistance, 
 		channelThickness = channelThickness, 
 		#maxRange = maxRange, 
 		minRange = minRange, 
 		transducerDepth = transducerDepth, 
-		beamWidth = beamWidth, 
 		depth = depth, 
 		upperChannelDepth = upperChannelDepth, 
 		propellerAngleDegrees = propellerAngleDegrees, 
-		channelType = channelType, 
-		xsd = xsd, 
-		cores = cores
+		ow = ow
 	)
 }
-
-
-
-
-
-
-
-
 
 
 
@@ -418,64 +178,50 @@ profosPP2LUF20 <- function(
 
 
 # Function to get the sonar NASC per ping
-getSonarNASCPerPing_oneChannel <- function(channelID, sonarData, transducerDepth = 7, depth = "Center.dep", propellerAngleDegrees = 45, channelThickness = 10) {
-	
-	
-	browser()
-	# Get the sonar data in the current channel:
-	channelUpper <- (channelID - 1) * channelThickness
-	channelLower <- channelID * channelThickness
-	
-	# Here we need to generate 
-	sonarDataCopy <- data.table::copy(sonarData)
-	inChannel <- (sonarDataCopy[[depth]] >= channelUpper & sonarDataCopy[[depth]] <= channelLower) %in% TRUE
-	sonarDataCopy[!inChannel, Sv.lin := NA]
-	
-	#sonarData <- subset(sonarData, !(sonarData[[depth]] >= channelUpper & sonarData[[depth]] <= channelLower) %in% FALSE)
-	
-	
-	# Get the area weighted sum of the school sv of each ping, and divide by the total sampling area of the sonar (excluding propeller water):
-	# R seems to discard decimal seconds in tapply when the grouping varible is POSIX, so we must unclass the time:
-	sv_times_area_per_ping <- tapply(sonarDataCopy$Sv.lin * sonarDataCopy$Area, unclass(sonarDataCopy$DateTime), sum)
-	
-	# Get the area in the specificc channel:
-	
-	
-	# sonarAreaClean <- sonarAreaFull * (1 - propellerAngleDegrees / 360)
-	# The tilt is given as either negative or positive (event changing withing one file) for downwards oriented beams, thus the abs():
-	tiltAngleDegrees <- abs(unique(sonarDataCopy, by = "DateTime")[["Trans.tilt"]])
-	sonarAreaClean <- getSonarChannnelArea(
-		channelID = channelID, 
-		tiltAngleDegrees = tiltAngleDegrees, # This can change between pings						
-		transducerDepth = transducerDepth, 
-		channelThickness = channelThickness, 
-		propellerAngleDegrees = propellerAngleDegrees
-	)
-	
-	sv_per_ping <- sv_times_area_per_ping / sonarAreaClean
-	# Create a data frame including the sv:
-	sonarNASCPerPing_oneChannel <- data.table::data.table(
-		DateTime = unique(sonarDataCopy$DateTime), 
-		sv = sv_per_ping
-	)
-	# Add the sa:
-	sonarNASCPerPing_oneChannel[, sa := sv * channelThickness]
-	
-	# Convert to NASC:
-	sonarNASCPerPing_oneChannel[, paste0("sa..ch.", channelID) :=  4 * pi * 1852^2 * sa]
-	
-	# Remove the sv and sa, and keep only the NASC (which is sA):
-	sonarNASCPerPing_oneChannel[, sv := NULL]
-	sonarNASCPerPing_oneChannel[, sa := NULL]
-	
-	return(sonarNASCPerPing_oneChannel)
+getSonarNASC <- function(sonarData, transducerDepth = 7, depthLabel = "Center.dep", propellerAngleDegrees = 45, channelThickness = 10) {
+    
+    # Get the channels:
+    maxDepth <- sonarData[, max(get(depthLabel), na.rm = TRUE)]
+    channelIntervals <- seq(0, maxDepth, by = channelThickness)
+    sonarData[, channelID := findInterval(get(depthLabel), channelIntervals)]
+    
+    # The total backscactter per ping:
+    totalBackscatterBy <- c("DateTime", "channelID")
+    sonarData[, totalBackscatter := sum(Sv.lin * Area * channelThickness, na.rm = TRUE), by = totalBackscatterBy]
+    sonarDataUnique <- unique(sonarData, by = totalBackscatterBy)
+    
+    # Get the area in the specific channel:
+    sonarDataUnique[, channelArea := getSonarChannnelArea(
+        channelID = channelID, 
+        tiltAngleDegrees = abs(Trans.tilt[1]), # This can change between pings, and can be given positive or negative					
+        transducerDepth = ..transducerDepth, 
+        channelThickness = ..channelThickness, 
+        propellerAngleDegrees = ..propellerAngleDegrees
+    )]
+    
+    # Caluclate the NASC as total backscatter divvided by channel area:
+    sonarDataUnique[, NASC := 4 * pi * 1852^2 * totalBackscatter / channelArea]
+    
+    # Average per log distance:
+    averageNASCBy <- c("logDistanceID", "channelID")
+    sonarDataUnique[, NASC := mean(NASC), by = averageNASCBy]
+    sonarDataUnique <- unique(sonarDataUnique, by = averageNASCBy)
+    
+    return(sonarDataUnique)
 }
+
+
+
+
+
+
+
 
 
 getSonarChannnelArea <- function(channelID, tiltAngleDegrees, transducerDepth, channelThickness, propellerAngleDegrees) {
 	
 	# The are of a channel (between channelThickness * c(channelID - 1, channelID)) is calculated from the following scheme:
-	# Consider the depth d of a beam at horizontal range h from the transducer positionned at (0, depth d_s). The angle downward relative to the sea surface is a.
+	# Consider the depth d of a beam at horizontal range h from the transducer positioned at (0, d_s). The angle downward relative to the sea surface is a.
 	# Then tan(a) = (d - d_s) / h, and h = (d - d_s) / tan(a)
 	horizontalRange <- function(depth, transducerDepth, tiltAngleDegrees) {
 		tiltAngleRadians <- tiltAngleDegrees * pi/180
@@ -490,18 +236,18 @@ getSonarChannnelArea <- function(channelID, tiltAngleDegrees, transducerDepth, c
 	# Get the horizontal ranges for the dephts of the channel:
 	depths <- channelThickness * c(channelID - 1, channelID)
 	horizontalRange1 <- horizontalRange(
-		depth  = depths[1], 
+		depth  = channelThickness * (channelID - 1), 
 		transducerDepth  = transducerDepth, 
 		tiltAngleDegrees  = tiltAngleDegrees
 	)
 	horizontalRange2 <- horizontalRange(
-		depth  = depths[2], 
+		depth  = channelThickness * channelID, 
 		transducerDepth  = transducerDepth, 
 		tiltAngleDegrees  = tiltAngleDegrees
 	)
 	
 	
-	# Get the channnel hoorizontal area:
+	# Get the channnel horizontal area:
 	channelAreaFull <- circularRingArea(horizontalRange1, horizontalRange2)
 	
 	# Discard the propeller water:
@@ -511,261 +257,173 @@ getSonarChannnelArea <- function(channelID, tiltAngleDegrees, transducerDepth, c
 }
 
 
-# Functions to get log distance IDs:
-getLogDistanceInd_one <- function(transect, x) {
-	which(x$DateTime >= transect[1] & x$DateTime < transect[2])
-}
-getLogDistanceInd <- function(transects, x) {
-	lapply(transects, getLogDistanceInd_one, x)
-}
-
-# Function to compare the depth distribution of echosounder and sonar by the average NASC:
-plotNASC_sonar_echosounder <- function(x, scaleSonar = 1) {
-	plot(x$echosounder, type="o")
-	points(scaleSonar * x$sonar, type="o", col=2)
-}
-
-plotMeanNASC_sonar_echosounder <- function(x, scaleSonar = 1, xlim = NULL, ylim = NULL, xlab = NULL, ylab = NULL, channelThickness = 10) {
-	sonars <- c("FisherySonar", "MS70", "MS70Phantom")
-	for(sonar in sonars) {
-		if(length(x[[sonar]])) {
-			x[[sonar]] <- x[[sonar]] * scaleSonar
-		}
-	}
-	#x$FisherySonar <- scaleSonar * x$FisherySonar
-	#x$MS70 <- scaleSonar * x$MS70
-	#x <- gather(x, key = "Instrument", value = "NASC", "Echosounder", "FisherySonar")
-	presentInstruments <- setdiff(names(x), c("ChannelID", "TransectID"))
-	x <- gather(x, key = "Instrument", value = "NASC", presentInstruments)
-	x$Instrument <- factor(x$Instrument, levels = presentInstruments)
-	p <- ggplot(data = x) + 
-		geom_path(aes(y = ChannelID, x = NASC, colour = Instrument), size=1) + 
-		geom_point(aes(y = ChannelID, x = NASC, colour = Instrument), size=3) + 
-		coord_cartesian(xlim = xlim, ylim = ylim)
-	
-	if(!is.na(x$TransectID[1])) {
-		p <- p  + ggtitle(paste("Transect", x$TransectID[1]))
-	}
-	
-	if(length(xlab)) {
-		p <- p + xlab(xlab)
-	}
-	if(length(ylab)) {
-		p <- p + ylab(ylab)
-	}
-
-	getIntervalString <- function(channelID, channelThickness = 5) {
-		max <- channelID * channelThickness
-		min <- max -  channelThickness
-		paste(min, "-", max, "m")
-	}
-	
-	# Reverse the y axis:
-	p <- p + scale_y_continuous(
-		breaks = x$ChannelID, 
-		trans = "reverse", 
-		labels = getIntervalString(x$ChannelID, channelThickness = channelThickness)
-	)
-	
-	p
-}
-
-# Function to read the Promus10 format:
-readPromus10 <- function(x, sonardepth = 7.5, numChannels = 22, freqCompensation = 1.5) {
-	# The MS70 sonar shows a peak in the vertical distribution that is some 10-20 meters deeper than the echosounder and fishery sonar. The report nr 10 contains summed sv over time in range and elevation angle bins:
-	# Select only lines starting with "2"
-	l <- readLines(x)
-	rows <- which(startsWith(l, "2"))
-	l <- l[rows]
-	s <- lapply(l, strsplit, ",", fixed = TRUE)
-	s <- lapply(s, unlist)
-	s <- lapply(s, as.numeric)
-	s <- do.call(rbind, s)
-	rangebins <- seq(s[1, 9], s[1, 10])
-	phi <- s[,3]
-	channelThickness <- s[1, 8]
-	range <- channelThickness * rangebins
-	# Changed on 2020-08-14:
-	#s <- s[, 9 + rangebins]
-	s <- s[, 11 + seq_along(rangebins)]
-	z <- outer(phi, range, function(phi, range) range * sin((phi - 90) * pi/180)) + sonardepth
-	rownames(z) <- phi
-	colnames(z) <- range
-	
-	depthSv <- data.frame(
-		depth = c(z), 
-		sv <- c(s)
-	)
-	
-	depthsIntervals <- seq(0, numChannels * channelThickness, channelThickness)
-	
-	
-	depthInd <- findInterval(depthSv$depth, depthsIntervals, all.inside = TRUE)
-	
-	depthSv$depthInd <- depthInd
-	
-	depthID <- seq_len(length(depthsIntervals) - 1)
-	depthMin <- depthsIntervals[-length(depthsIntervals)]
-	depthMax <- depthsIntervals[-1]
-	sv <- by(depthSv$sv, depthSv$depthInd, mean)
-	NASC <- rep(NA, numChannels)
-	NASC[as.numeric(names(sv))] <- unclass(sv) * channelThickness * freqCompensation
-	#NASC <-  unclass(sv) * channelThickness * freqCompensation
-		
-	
-	data.frame(
-		depthID = depthID, 
-		depthMin = depthMin, 
-		depthMax = depthMax, 
-		NASC = NASC)
-}
-
-
-
-
-
-
-
-
-
-
-
 
 
 
 # Function to convert the sonarData to a table with all channels as columns, and write to NMDEchosounder xml file:
 writeSonarLUF20 <- function(
 	sonarData,  
-	LUF20File, 
+	acousticFile, 
 	cruise = "FisherySonar", 
 	platform = NA, 
+	
 	acocat = 12, 
 	freq = 38000, 
 	transceiver = 1, 
-	logDuration = 36, 
+	logDistance = 0.1, 
 	channelThickness = 10, 
 	#maxRange = 600, 
 	minRange = 10, 
 	transducerDepth = 7, 
-	beamWidth = 6, 
 	depth = "Center.dep", 
 	upperChannelDepth = 0, 
 	propellerAngleDegrees = 45, 
-	channelType = "P", 
-	xsd = "1", 
-	cores = 1
+	
+	ow = FALSE
 ) {
-	
-	# Get the upper, mid and lower point of the sonar sampling volume:
-	numChannels <- ceiling(max(sonarData[[depth]], na.rm = TRUE) / channelThickness)
-	channelIDs <- seq_len(numChannels)
-	
-	# Get the sonar NASC per channel:
-	NASCPerPing <- lapply(channelIDs, getSonarNASCPerPing_oneChannel, sonarData = sonarData, transducerDepth = transducerDepth, depth = depth, propellerAngleDegrees = propellerAngleDegrees, channelThickness = channelThickness)
-	NASCPerPing <- RstoxData::mergeByIntersect(NASCPerPing, all = TRUE)
-	
-	# Merge in the positions:
-	NASCPerPing <- RstoxData::mergeByIntersect(NASCPerPing, sonarData[, c("DateTime", "Ship.lon", "Ship.lat", "Ship.speed", "Ship.heading", "Trans.tilt")])
-	
-	browser()
-	
-	
-	# Create a time sequence to interpolate positions to and to average the NASCs and the speed in:
-	DateTimeSeq <- seq(min(NASCPerPing$DateTime), max(NASCPerPing$DateTime) + logDuration, by = logDuration)
-	# Set the last time of the DateTimeSeq equal to the actual last time:
-	DateTimeSeq[length(DateTimeSeq)] <- max(NASCPerPing$DateTime)
-	
-	# Find first the time intervals of the sonar times:
-	timeInterval <- findInterval(NASCPerPing$DateTime, DateTimeSeq)
-	
+    
+    #### echosounder_dataset ####
+    # Create first the header table:
+    echosounder_dataset <- data.table::data.table(
+        platform = platform, 
+        cruise = cruise
+    )
+    
+    
+    #### distance ####
+    # Subset to one row per ping
+    sonarDataPerPing <- unique(sonarData, by = "DateTime")
+    
+    # Add the time difference and multiply with the speed to get sailed distance:
+    timeDiff <- as.numeric(diff(sonarDataPerPing$DateTime), units = "secs")
+    timeDiff <- c(timeDiff, utils::tail(timeDiff, 1))
+    sonarDataPerPing[, timeDifference := timeDiff]
+    sonarDataPerPing[, sailedDistanceIndividual := Ship.speed * timeDifference / 1852]
+    sonarDataPerPing[, sailedDistance := cumsum(sailedDistanceIndividual)]
+    
+    # Define log-distances:
+    sonarDataPerPing[, logDistanceID := floor(sailedDistance / logDistance) + 1]
+    
+    # Add logDistanceID also for the sonarData for use when averaging NASC in each log distance:
+    sonarData <- merge(sonarData, sonarDataPerPing[, c("DateTime", "logDistanceID")], by = "DateTime", all.x = TRUE)
+    
+    
+    # Get the log info:
+    start_time <- sonarDataPerPing[, .(start_time = DateTime[1]), by = "logDistanceID"]$start_time
+    lat_start <- sonarDataPerPing[, .(lat_start = Ship.lat[1]), by = "logDistanceID"]$lat_start
+    lon_start <- sonarDataPerPing[, .(lon_start = Ship.lon[1]), by = "logDistanceID"]$lon_start
+    
+    stop_time <- c(start_time, utils::head(sonarDataPerPing[, utils::tail(DateTime, 1)], -1))
+    lat_stop <- c(lat_start, utils::head(sonarDataPerPing[, utils::tail(Ship.lat, 1)], -1))
+    lon_stop <- c(lon_start, utils::head(sonarDataPerPing[, utils::tail(Ship.lon, 1)], -1))
+    
+    integrator_dist <- sonarDataPerPing[, .(integrator_dist = sum(sailedDistanceIndividual)), by = "logDistanceID"]$integrator_dist
+    log_start <- c(0, utils::head(cumsum(integrator_dist), -1))
+    
+    pel_ch_thickness <- channelThickness
+    
+    
+    start_time <- format(start_time, format = "%Y-%m-%d %H:%M:%OS3")
+    stop_time <- format(stop_time, format = "%Y-%m-%d %H:%M:%OS3")
+    
+    
+    
+    # Create the distance table:
+    distance <-  data.table::data.table(
+        log_start = log_start,
+        start_time = start_time,
+        stop_time = stop_time,
+        integrator_dist = integrator_dist,
+        pel_ch_thickness = pel_ch_thickness,
+        lat_start = lat_start,
+        lat_stop = lat_stop,
+        lon_start = lon_start,
+        lon_stop = lon_stop
+    )
+    
+    
+    #### frequency ####
+    # Create the frequency table, skipping "threshold", "num_pel_ch", "num_bot_ch", "min_bot_depth", "max_bot_depth", "upper_interpret_depth", "lower_interpret_depth", "lower_integrator_depth" and "quality", "bubble_corr", as these are not used by StoX:
+    frequency <-  data.table::data.table(
+        log_start = log_start,
+        start_time = start_time,
+        freq = freq, 
+        transceiver = 1, 
+        upper_integrator_depth = transducerDepth
+    )
+    
+    
+    #### ch_type ####
+    ch_type <-  data.table::data.table(
+        log_start = log_start,
+        start_time = start_time,
+        freq = freq, 
+        transceiver = 1, 
+        type = "P"
+    )
+    
+    
+    #### sa_by_acocat ####
+    sa_by_acocat <-  data.table::data.table(
+        logDistanceID = unique(sonarDataPerPing$logDistanceID), # Include this for merging with NASC in the sa table below
+        log_start = log_start,
+        start_time = start_time,
+        freq = freq, 
+        transceiver = 1, 
+        type = "P", 
+        acocat =  acocat
+    )
+    
+    
+    #### sa ####
+    sonarNASC <- getSonarNASC(sonarData, transducerDepth = transducerDepth, depthLabel = "Center.dep", propellerAngleDegrees = 45, channelThickness = 10)
+        
+    
+    
+    sonarNASCColsToKeep <- c(
+        "logDistanceID", 
+        "channelID", 
+        "NASC"
+    )
+    sa <- merge(sa_by_acocat, sonarNASC[, sonarNASCColsToKeep, with = FALSE], by = "logDistanceID", all = TRUE)
+    
+    data.table::setorderv(sa, c("logDistanceID", "channelID"))
+    
+    sa[, logDistanceID := NULL]
 
-	# Now we have the time intervals to average the NASC and speed and to get the start and end times and positions in:
-	intervalsData <- data.table::data.table(
-		DateTime = DateTimeSeq
-	)
-	# Interpolate the positions onto the time intervals:
-	intervalsData[, Longitude := approx(NASCPerPing$DateTime, NASCPerPing$Ship.lon, DateTime)$y]
-	intervalsData[, Latitude := approx(NASCPerPing$DateTime, NASCPerPing$Ship.lat, DateTime)$y]
-	
-	
-	# Get start and stop position and time
-	LUF20Data <- data.table::data.table(
-		intervalsData[-nrow(intervalsData), ], 
-		intervalsData[-1, ]
-	)
-	data.table::setnames(LUF20Data, paste0(rep(c("Start", "Stop"), each = 3), names(LUF20Data)))
-	LUF20Data[, timeInterval := seq_len(nrow(.SD))]
-	
-	# Add the NASC of each channel:
-	NASCPerPing[, timeInterval := findInterval(DateTime, DateTimeSeq, rightmost.closed = TRUE)]
-	# Average NASC and vessel speed in each interval:
-	NASCCols <- names(NASCPerPing)[startsWith(names(NASCPerPing), "sa..ch")]
-	num_pel_ch <- length(NASCCols)
-	toAverage <- c(
-		"Ship.speed", 
-		NASCCols
-	)
-	averageSpeedAndNASC <- NASCPerPing[, lapply(.SD, mean0), by = "timeInterval", .SDcols = toAverage]
-	
-	# Insert NAs for 0, as per the LUF20 convension:
-	for (j in NASCCols) {
-		data.table::set(averageSpeedAndNASC, which(averageSpeedAndNASC[[j]] == 0), j, NA)
-	}
-		
-	# Add the average sa and speed to the LUF20Data:
-	LUF20Data <- merge(LUF20Data, averageSpeedAndNASC, by = "timeInterval")
-	
-	
-	# Invent log_start as starting from 0. Here speed is in m/s, so we need to convert to knots:
-	LUF20Data[, log_start := cumsum(as.numeric(StopDateTime - StartDateTime, units = "hours") * Ship.speed * 3600 / 1852)]
-	
-	
-	integrator_dist <- diff(LUF20Data$log_start)
-	integrator_dist <- c(integrator_dist, utils::tail(integrator_dist, 1))
-	
-	# Add other data:
-	LUF20Data[, report_time := format(Sys.time(), tz = "UTC")]
-	LUF20Data[, cruise := ..cruise]
-	LUF20Data[, platform := ..platform]
-	LUF20Data[, integrator_dist := ..integrator_dist]
-	LUF20Data[, pel_ch_thickness := ..channelThickness]
-	LUF20Data[, num_pel_ch := ..num_pel_ch]
-	LUF20Data[, upper_interpret_depth := ..upperChannelDepth]
-	LUF20Data[, upper_integrator_depth := ..upperChannelDepth]
-	LUF20Data[, acocat := ..acocat]
-	LUF20Data[, freq := ..freq]
-	LUF20Data[, type := ..channelType]
-	LUF20Data[, transceiver := ..transceiver]
-	
-	
-	# Rename variables to the LUF2o names:
-	oldNames <- c(
-		"StartDateTime", 
-		"StopDateTime",
-		"StartLongitude",
-		"StartLatitude",
-		"StopLongitude",
-		"StopLatitude"
-	)
-	LUF20Names <- c(
-		"start_time", 
-		"stop_time",
-		"lon_start",
-		"lat_start",
-		"lon_stop",
-		"lat_stop"
-	)
-	data.table::setnames(LUF20Data, oldNames, LUF20Names)
-	
-	# Convert to milliseconds strings:
-	LUF20Data[, start_time := format(start_time, format = "%Y-%m-%d %H:%M:%OS3")]
-	LUF20Data[, stop_time := format(stop_time, format = "%Y-%m-%d %H:%M:%OS3")]
-	
+    setnames(sa, old = c('channelID','NASC'), new = c('ch','sa'))
+    
+    AcousticData <- list(
+        list(
+            echosounder_dataset = echosounder_dataset, 
+            distance = distance, 
+            frequency = frequency, 
+            ch_type = ch_type, 
+            sa_by_acocat = sa_by_acocat, 
+            sa = sa
+        )
+    )
+    
+    
+    
+    
+    
+    
+    
 	# Write the file:
-	if(!file.exists(dirname(LUF20File))) {
-		dir.create(dirname(LUF20File))
+	if(!file.exists(dirname(acousticFile))) {
+		dir.create(dirname(acousticFile))
 	}
-	LUF20File <- Rstox::writeAcousticXML(as.data.frame(LUF20Data), LUF20File, xsd = xsd, cores = cores)
-	
-	return(LUF20Data)
+    
+    require(RstoxData)
+    # Write to NMDBiotic xml:
+    RstoxData:::WriteAcoustic(
+        AcousticData, 
+        FileNames = acousticFile, 
+        namespaces = "http://www.imr.no/formats/nmdechosounder/v1", 
+        encoding ="UTF-8", 
+        overwrite = ow
+    )
+
+	return(AcousticData)
 }
