@@ -1,7 +1,7 @@
 Package: SonarVerticalDistribution
 Version: 1.0.1
-Date: 2022-04-18
-Title: Generate NMDechosounder or ICESAcoustic from Profis ppe
+Date: 2022-05-01
+Title: Generate NMDechosounder or ICESAcoustic from PROFOS ppe-files
 Authors@R: c(
   person(given = "Arne Johannes", 
     family = "Holmin", 
@@ -13,7 +13,7 @@ Authors@R: c(
   person(given = "Norwegian Institute of Marine Research", 
     role = c("cph", "fnd")))
 Depends: R (>= 3.6)
-Description: Fishery sonar output file in the ppe format from Profos are converted to files
+Description: Fishery sonar output file in the ppe format from PROFOS are converted to files
   in the NMDechosounder or ICESAcoustic format suitable for use in StoX.
 URL: https://github.com/arnejohannesholmin/SonarVerticalDistribution
 BugReports: https://github.com/arnejohannesholmin/SonarVerticalDistribution/issues
