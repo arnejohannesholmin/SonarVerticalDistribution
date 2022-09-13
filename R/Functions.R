@@ -116,30 +116,47 @@ profosPPE2LUF20 <- function(
 	upperChannelDepth = 0, 
 	propellerAngleDegrees = 45, 
 	checkNAs = TRUE, 
-	schoolThreshold = c(-70, -20), 
+	schoolSvThreshold = NULL, 
+	schoolAreaThreshold = NULL, 
+	schoolNPingThreshold = NULL, 
 	ow = FALSE
 ) {
-	
-	
-    #sonarData <- readAllProfosPP(ppeFiles)
-	sonarData <- readAllProfosPP(ppeFiles, na.strings = "N/A")
-	browser()
-
-	# This was wrong, as we need all pings:
-	#sonarData <- sonarData[complete.cases(sonarData), ]
+    
+    # Read the sonar data:
+    sonarData <- readAllProfosPP(ppeFiles, na.strings = "N/A")
 
 	#To check if any NA in data before continue
 	if(checkNAs) {
 		sapply(sonarData, function(x) sum(is.na(x)))
 	}
 	
-
-	# This was also wrong, as we need all pings:
-	# Subset by lower and upper mean sv of the schools:
-	#sonarData <- subsetSchools(sonarData, lower = schoolThreshold[1], upper = schoolThreshold[2])
-	# Rather set Sv to NA when outside of the vvalid range:
-	sonarData[Sv.mean < schoolThreshold[1] | Sv.mean > schoolThreshold[2], Sv.mean := NA]
-
+    # Set Sv to NA when outside of the valid range:
+    if(length(schoolSvThreshold) == 2) {
+        outside <- sonarData[, Sv.mean < schoolSvThreshold[1] | Sv.mean > schoolSvThreshold[2]]
+        if(any(outside)) {
+            message("The schoolSvThreshold (", paste(schoolSvThreshold, collapse = ", "), ") discarded ", sum(outside, na.rm = TRUE), " out of ", length(outside), " pings.")
+        }
+        sonarData[outside, Sv.mean := NA]
+    }
+	# And with the school area range:
+    if(length(schoolAreaThreshold) == 2) {
+        outside <- sonarData[, Area < schoolAreaThreshold[1] | Area > schoolAreaThreshold[2]]
+        if(any(outside)) {
+            message("The schoolAreaThreshold (", paste(schoolAreaThreshold, collapse = ", "), ") discarded ", sum(outside, na.rm = TRUE), " out of ", length(outside), " pings.")
+        }
+        sonarData[outside, Sv.mean := NA]
+    }
+    # And with the number of pings per school:
+    if(length(schoolNPingThreshold) == 2) {
+        sonarData[, NPingsPerSchool := .N, by = "Id"]
+        outside <- sonarData[, NPingsPerSchool < schoolNPingThreshold[1] | NPingsPerSchool > schoolNPingThreshold[2]]
+        if(any(outside)) {
+            message("The schoolNPingThreshold (", paste(schoolNPingThreshold, collapse = ", "), ") discarded ", sum(outside, na.rm = TRUE), " out of ", length(outside), " pings.")
+        }
+        sonarData[outside, Sv.mean := NA]
+    }
+    
+	# Add sv:
 	sonarData <- addVolumeBackscatteringCoefficient(sonarData)
 
 	# Add DateTime in POSIX format:
@@ -149,9 +166,6 @@ profosPPE2LUF20 <- function(
 	sonarData <- orderSchoolsByTime(sonarData)
 
 	## Write the LUF20:
-	#if(!ow && file.exists(acousticFile)) {
-	#	stop("The acousticFile exists: ", acousticFile, ". Choose a different file path.")
-	#}
 	writeSonarLUF20(
 		sonarData = sonarData, 
 		acousticFile = acousticFile, 
@@ -171,9 +185,6 @@ profosPPE2LUF20 <- function(
 		ow = ow
 	)
 }
-
-
-
 
 
 
@@ -225,6 +236,12 @@ getSonarChannnelArea <- function(channelID, tiltAngleDegrees, transducerDepth, c
 	# Then tan(a) = (d - d_s) / h, and h = (d - d_s) / tan(a)
 	horizontalRange <- function(depth, transducerDepth, tiltAngleDegrees) {
 		tiltAngleRadians <- tiltAngleDegrees * pi/180
+		
+		## Add a check for school depths smaller than transducer depth:
+		#if(any(depth < transducerDepth)) {
+		#    stop("transducerDepth (", transducerDepth, ") cannot be larger than the smallest school depth ("#, min(depth, na.rm = TRUE), ").")
+		#}
+		
 		h <- (depth - transducerDepth) / tan(tiltAngleRadians)
 		h[h < 0] <- 0
 		return(h)
@@ -349,7 +366,9 @@ writeSonarLUF20 <- function(
         start_time = start_time,
         freq = freq, 
         transceiver = 1, 
-        upper_integrator_depth = transducerDepth
+        # Hard code this to 0, as it is not needed, and using transducerDepth as before may cause error in RstoxData::StoxAcoustic() when there are data higher than the transducerDepth:
+        #upper_integrator_depth = transducerDepth
+        upper_integrator_depth = 0
     )
     
     
@@ -376,7 +395,7 @@ writeSonarLUF20 <- function(
     
     
     #### sa ####
-    sonarNASC <- getSonarNASC(sonarData, transducerDepth = transducerDepth, depthLabel = "Center.dep", propellerAngleDegrees = 45, channelThickness = 10)
+    sonarNASC <- getSonarNASC(sonarData, transducerDepth = transducerDepth, depthLabel = "Center.dep", propellerAngleDegrees = propellerAngleDegrees, channelThickness = channelThickness)
         
     
     
@@ -427,3 +446,8 @@ writeSonarLUF20 <- function(
 
 	return(AcousticData)
 }
+
+
+
+
+

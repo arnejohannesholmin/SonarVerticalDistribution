@@ -20,7 +20,9 @@ profosPPE2LUF20(
   upperChannelDepth = 0,
   propellerAngleDegrees = 45,
   checkNAs = TRUE,
-  schoolThreshold = c(-70, -20),
+  schoolSvThreshold = NULL,
+  schoolAreaThreshold = NULL,
+  schoolNPingThreshold = NULL,
   ow = FALSE
 )
 }
