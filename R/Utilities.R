@@ -3,7 +3,9 @@ readLUF11 <- function(x, headChunk = 20) {
     readLUF11_one <- function(x, headChunk = 20) {
         l <- readLines(x, headChunk)
         skip <- sum(startsWith(l,"%"))
-        read.table(x, header = TRUE, sep = "", skip = skip)
+        # Added flush = TRUE on 2022-08-26 as some LUF11 contains 2 extra zeros when the MinDepth is 0:
+        #read.table(x, header = TRUE, sep = "", skip = skip)
+        read.table(x, header = TRUE, sep = "", skip = skip, flush = TRUE)
     }
     
     if(isTRUE(file.info(x)$isdir)) {
