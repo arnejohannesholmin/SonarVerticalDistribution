@@ -340,6 +340,7 @@ writeSonarLUF20 <- function(
     lastPing <- sonarDataPerPing[, which.max(DateTime)]
     print(head(start_time[-1]))
     stop_time <- start_time[-1]
+    print(head(stop_time))
     stop_time <- c(stop_time, NA)
     print(head(stop_time))
     stop_time[length(stop_time)] <- sonarDataPerPing$DateTime[lastPing]
