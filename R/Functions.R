@@ -339,7 +339,7 @@ writeSonarLUF20 <- function(
     lon_start <- sonarDataPerPing[, .(lon_start = Ship.lon[1]), by = "logDistanceID"]$lon_start
     lastPing <- sonarDataPerPing[, which.max(DateTime)]
     print(head(start_time[-1]))
-    stop_time <- c(start_time[-1], sonarDataPerPing[lastPing, DateTime])
+    stop_time <- as.POSIXct(c(start_time[-1], sonarDataPerPing[lastPing, DateTime]), tz = "UTC")
     print(head(stop_time))
     lat_stop <- c(lat_start[-1], sonarDataPerPing[lastPing, Ship.lat])
     lon_stop <- c(lon_start[-1], sonarDataPerPing[lastPing, Ship.lon])
