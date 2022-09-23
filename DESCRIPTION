@@ -1,6 +1,6 @@
 Package: SonarVerticalDistribution
 Version: 1.0.1
-Date: 2022-09-13
+Date: 2022-09-19
 Title: Generate NMDechosounder or ICESAcoustic from PROFOS ppe-files
 Authors@R: c(
   person(given = "Arne Johannes", 
