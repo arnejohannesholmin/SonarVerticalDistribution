@@ -309,7 +309,11 @@ writeSonarLUF20 <- function(
     
     #### distance ####
     # Subset to one row per ping
+    print("head(sonarData$DateTime)")
+    print(head(sonarData$DateTime))
     sonarDataPerPing <- unique(sonarData, by = "DateTime")
+    print("head(sonarDataPerPing$DateTime)")
+    print(head(sonarDataPerPing$DateTime))
     
     # Add the time difference and multiply with the speed to get sailed distance:
     timeDiff <- as.numeric(diff(sonarDataPerPing$DateTime), units = "secs")
