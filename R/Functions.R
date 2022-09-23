@@ -325,14 +325,22 @@ writeSonarLUF20 <- function(
     sonarData <- merge(sonarData, sonarDataPerPing[, c("DateTime", "logDistanceID")], by = "DateTime", all.x = TRUE)
     
     
-    # Get the log info:
+    
+    
+    # Get the log distance start time and position:
     start_time <- sonarDataPerPing[, .(start_time = DateTime[1]), by = "logDistanceID"]$start_time
     lat_start <- sonarDataPerPing[, .(lat_start = Ship.lat[1]), by = "logDistanceID"]$lat_start
     lon_start <- sonarDataPerPing[, .(lon_start = Ship.lon[1]), by = "logDistanceID"]$lon_start
+    lastPing <- sonarDataPerPing[, which.max(DateTime)]
+    stop_time <- c(start_time[-1], sonarDataPerPing[lastPing, DateTime])
+    lat_stop <- c(lat_start[-1], sonarDataPerPing[lastPing, Ship.lat])
+    lon_stop <- c(lon_start[-1], sonarDataPerPing[lastPing, Ship.lon])
     
-    stop_time <- c(start_time, utils::head(sonarDataPerPing[, utils::tail(DateTime, 1)], -1))
-    lat_stop <- c(lat_start, utils::head(sonarDataPerPing[, utils::tail(Ship.lat, 1)], -1))
-    lon_stop <- c(lon_start, utils::head(sonarDataPerPing[, utils::tail(Ship.lon, 1)], -1))
+    
+    
+    
+    
+    
     
     integrator_dist <- sonarDataPerPing[, .(integrator_dist = sum(sailedDistanceIndividual)), by = "logDistanceID"]$integrator_dist
     log_start <- c(0, utils::head(cumsum(integrator_dist), -1))
