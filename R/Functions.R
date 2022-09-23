@@ -341,6 +341,7 @@ writeSonarLUF20 <- function(
     print(head(start_time[-1]))
     stop_time <- start_time[-1]
     stop_time <- c(stop_time, NA)
+    print(head(stop_time))
     stop_time[length(stop_time)] <- sonarDataPerPing$DateTime[lastPing]
     print(head(stop_time))
     stop_time <- as.POSIXct(c(start_time[-1], sonarDataPerPing[lastPing, DateTime]), tz = "UTC")
