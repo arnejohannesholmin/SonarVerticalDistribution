@@ -327,6 +327,8 @@ writeSonarLUF20 <- function(
     
     # Add logDistanceID also for the sonarData for use when averaging NASC in each log distance:
     sonarData <- merge(sonarData, sonarDataPerPing[, c("DateTime", "logDistanceID")], by = "DateTime", all.x = TRUE)
+    print("head(sonarData$DateTime)___________")
+    print(head(sonarData$DateTime))
     
     
     
