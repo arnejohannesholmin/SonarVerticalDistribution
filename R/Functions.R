@@ -455,6 +455,118 @@ writeSonarLUF20 <- function(
 }
 
 
+#' Plot summed NASC by PSU
+#' 
+#' @param x A data.table holding at least the the columns "Beam", "PSU", "MaxLayerDepth" and "NASC".
+#' @param maxDepth If given only the layers down to the maxDepth is included.
+#' @param xlab The x label.
+#' @param ylab The y label.
+#' 
+#' @export
+#' 
+plotTotalNASCByPSU <- function(x, maxDepth = NULL, xlab = NULL, ylab = NULL, scaleNASC = NULL) {
+    
+    if(length(maxDepth)) {
+        x <- subset(x, MaxLayerDepth <= maxDepth)
+    }
+    
+    # Sum NASC for each beam and PSU:
+    x <- data.table::copy(x)
+    x <- scaleNASC(x, scaleNASC = scaleNASC) 
+    
+    x <- subset(x, MaxLayerDepth <= maxDepth)
+    sumBy <- c("Beam", "PSU")
+    x <- x[, NASC := sum(NASC, na.rm = TRUE), by = sumBy]
+    x <- x[, c("PSU", "Beam", "NASC")]
+    x <- unique(x)
+    
+    # Plot the total NASC for each beam:
+    p <- ggplot2::ggplot(data = x) + 
+        ggplot2::geom_point(ggplot2::aes_string(x = "PSU", y = "NASC", group = "Beam", color = "Beam")) + 
+        ggplot2::ggtitle(paste0("TotalNASC down to depth ", maxDepth))
+    
+    
+    if(length(xlab)) {
+        p <- p + ggplot2::xlab(xlab)
+    }
+    if(length(ylab)) {
+        p <- p + ggplot2::ylab(ylab)
+    }
+    
+    
+    return(p)
+}
+
+scaleNASC <- function(x, scaleNASC = NULL) {
+    
+    if(length(scaleNASC) && is.list(scaleNASC) && all(names(scaleNASC) %in% unique(x$Beam))) {
+        scaleNASC <- data.table::data.table(
+            Beam = names(scaleNASC), 
+            ScaleNASCFactor = unlist(scaleNASC)
+        )
+        x <- merge(x, scaleNASC, by = "Beam", all.x = TRUE)
+        x[, NASC := NASC * ScaleNASCFactor]
+    }
+    return(x)
+}
+
+#' Plot NASC by Layer and Beam
+#' 
+#' @inheritParams plotTotalNASCByPSU
+#' @param x A data.table holding at least the the columns "Beam", "PSU", "MaxLayerDepth" and "NASC".
+#' @param maxDepth If given only the layers down to the maxDepth is included.
+#' @param xlim,ylim The x and y limits of the plot.
+#' @param discardNALayer Logical: If TRUE discard any NA Layer.
+#' 
+#' @export
+#' 
+plotNASCByBeamAndLayer <- function(x, xlim = NULL, ylim = NULL, xlab = NULL, ylab = NULL, discardNALayer = TRUE, maxDepth = NULL, scaleNASC = NULL) {
+    
+    x <- data.table::copy(x)
+    
+    if(discardNALayer) {
+        x <- subset(x, !is.na(Layer))
+    }
+    
+    x <- scaleNASC(x, scaleNASC = scaleNASC) 
+    
+    if(length(maxDepth)) {
+        x <- subset(x, MaxLayerDepth <= maxDepth)
+    }
+    
+    x[, MidLayerDepth := (MinLayerDepth + MinLayerDepth) / 2]
+    
+    
+    p <- ggplot2::ggplot(data = x) + 
+        ggplot2::geom_path(ggplot2::aes(y = MidLayerDepth, x = NASC, colour = Beam), size = 1) + 
+        ggplot2::geom_point(ggplot2::aes(y = MidLayerDepth, x = NASC, colour = Beam), size = 3) + 
+        ggplot2::coord_cartesian(xlim = xlim, ylim = ylim)
+    
+    if(!is.na(x$PSU[1])) {
+        p <- p  + ggplot2::ggtitle(paste("PSU", x$PSU[1]))
+    }
+    
+    if(length(xlab)) {
+        p <- p + ggplot2::xlab(xlab)
+    }
+    if(length(ylab)) {
+        p <- p + ggplot2::ylab(ylab)
+    }
+    
+    x[, LayerString := paste0(MinLayerDepth, " - ", MaxLayerDepth)]
+    LayerInfo <- unique(x[, c("Layer", "LayerString")])
+    
+    # Reverse the y axis:
+    p <- p + ggplot2::scale_y_continuous(
+        breaks = x$MidLayerDepth, 
+        labels = x$LayerString, 
+        trans = "reverse"
+    )
+    
+    
+    return(p)
+}
+
 
 
 
