@@ -331,8 +331,6 @@ writeSonarLUF20 <- function(
     print(head(sonarData$DateTime))
     
     
-    browser()
-    
     # Get the log distance start time and position:
     start_time <- sonarDataPerPing[, .(start_time = DateTime[1]), by = "logDistanceID"]$start_time
     lat_start <- sonarDataPerPing[, .(lat_start = Ship.lat[1]), by = "logDistanceID"]$lat_start
@@ -351,7 +349,7 @@ writeSonarLUF20 <- function(
     print(head(stop_time))
     stop_time <- c(start_time[-1], sonarDataPerPing[lastPing, DateTime])
     
-    stop_time <- as.POSIXct(c(unclass(start_time[-1]), unclass(sonarDataPerPing[lastPing, DateTime])), tz = "UTC", usetz = T)
+    stop_time <- as.POSIXct(c(unclass(start_time[-1]), unclass(sonarDataPerPing[lastPing, DateTime])), tz = "UTC", origin = "1970-01-01 00:00.00")
     
     print(head(stop_time))
     lat_stop <- c(lat_start[-1], sonarDataPerPing[lastPing, Ship.lat])
