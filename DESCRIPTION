@@ -22,6 +22,7 @@ LazyData: true
 Encoding: UTF-8
 Imports: 
     data.table (>= 1.12.6),
+    ggplot2 (>= 3.0.0),
     stringi (>= 1.4.3)
 Suggests: 
     tinytest (>= 1.2.0)
