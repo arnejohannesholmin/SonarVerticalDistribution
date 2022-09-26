@@ -327,31 +327,15 @@ writeSonarLUF20 <- function(
     
     # Add logDistanceID also for the sonarData for use when averaging NASC in each log distance:
     sonarData <- merge(sonarData, sonarDataPerPing[, c("DateTime", "logDistanceID")], by = "DateTime", all.x = TRUE)
-    print("head(sonarData$DateTime)___________")
-    print(head(sonarData$DateTime))
-    
     
     # Get the log distance start time and position:
     start_time <- sonarDataPerPing[, .(start_time = DateTime[1]), by = "logDistanceID"]$start_time
     lat_start <- sonarDataPerPing[, .(lat_start = Ship.lat[1]), by = "logDistanceID"]$lat_start
     lon_start <- sonarDataPerPing[, .(lon_start = Ship.lon[1]), by = "logDistanceID"]$lon_start
     lastPing <- sonarDataPerPing[, which.max(DateTime)]
-    print(head(start_time[-1]))
-    stop_time <- start_time[-1]
-    print(head(stop_time))
-    stop_time <- c(stop_time, NA)
     
     # CET from here on on Hectors laptop:!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111
-    print(head(stop_time))
-    stop_time[length(stop_time)] <- sonarDataPerPing$DateTime[lastPing]
-    print(head(stop_time))
-    stop_time <- as.POSIXct(c(start_time[-1], NA), tz = "UTC", usetz = T)
-    print(head(stop_time))
-    stop_time <- c(start_time[-1], sonarDataPerPing[lastPing, DateTime])
-    
     stop_time <- as.POSIXct(c(unclass(start_time[-1]), unclass(sonarDataPerPing[lastPing, DateTime])), tz = "UTC", origin = "1970-01-01 00:00.00")
-    
-    print(head(stop_time))
     lat_stop <- c(lat_start[-1], sonarDataPerPing[lastPing, Ship.lat])
     lon_stop <- c(lon_start[-1], sonarDataPerPing[lastPing, Ship.lon])
     
